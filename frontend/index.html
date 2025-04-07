@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>HireHive Support Bot</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 2rem;
+      background: #f5f5f5;
+    }
+
+    #chatBox {
+      border: 1px solid #ccc;
+      padding: 1rem;
+      background: white;
+      height: 400px;
+      overflow-y: scroll;
+      margin-bottom: 1rem;
+    }
+
+    .message {
+      max-width: 70%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 16px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .bot {
+      background-color: #e0f0ff;
+      text-align: left;
+      border-bottom-left-radius: 0;
+    }
+
+    .user {
+      background-color: #d4f4dc;
+      text-align: right;
+      margin-left: auto;
+      border-bottom-right-radius: 0;
+    }
+
+    #quickReplies {
+      margin-bottom: 1rem;
+    }
+
+    #quickReplies button {
+      margin: 4px;
+      padding: 6px 12px;
+      font-size: 0.9rem;
+      border: none;
+      border-radius: 10px;
+      background: #dbeafe;
+      cursor: pointer;
+    }
+
+    #quickReplies button:hover {
+      background: #bfdbfe;
+    }
+
+    #restartBtn {
+      margin-top: 1rem;
+    }
+
+    .typing-indicator {
+      font-size: 1rem;
+      font-style: italic;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <h1>🤖 HireHive Support Bot</h1>
+  <div id="chatBox"></div>
+  <div id="quickReplies"></div>
+  <form id="chatForm">
+    <input type="text" id="userInput" placeholder="Type your message..." required style="width: 70%; padding: 0.5rem;">
+    <button type="submit">Send</button>
+    <button type="button" id="voiceBtn">🎙️ Speak</button>
+  </form>
+  <button id="restartBtn">🔄 Start New Conversation</button>
+
+  <script>
+    const chatBox = document.getElementById('chatBox');
+    const chatForm = document.getElementById('chatForm');
+    const userInput = document.getElementById('userInput');
+    const restartBtn = document.getElementById('restartBtn');
+    const quickReplies = document.getElementById('quickReplies');
+
+    let typingInterval = null;
+
+    let sessionData = {
+      step: 0,
+      chat_log: [],
+      email: '',
+      category: '',
+      description: '',
+      urgency: ''
+    };
+    function generateSessionId() {
+        return crypto.randomUUID();
+        }
+
+    function initializeSession() {
+    sessionData = {
+        session_id: generateSessionId(),  // Generate a unique session id
+        step: 0,
+        chat_log: [],
+        email: '',
+        category: '',
+        description: '',
+        urgency: ''
+    };
+    }
+    function addMessage(text, sender) {
+      const div = document.createElement('div');
+      // Ensure the class is properly set (backticks needed for template literal)
+      div.className = `message ${sender}`;
+      div.textContent = text;
+      chatBox.appendChild(div);
+      chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: 'smooth' });
+    }
+
+    function showTypingIndicator() {
+      const typing = document.createElement('div');
+      typing.className = 'message bot typing-indicator';
+      typing.id = 'typing-indicator';
+      typing.textContent = 'Typing';
+      chatBox.appendChild(typing);
+      chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: 'smooth' });
+
+      let dots = 0;
+      typingInterval = setInterval(() => {
+        dots = (dots % 3) + 1;
+        typing.textContent = 'Typing' + '.'.repeat(dots);
+      }, 500);
+    }
+
+    function hideTypingIndicator() {
+      clearInterval(typingInterval);
+      const typing = document.getElementById('typing-indicator');
+      if (typing) chatBox.removeChild(typing);
+    }
+
+    function showQuickRepliesIfRelevant(text) {
+      quickReplies.innerHTML = '';
+      const lower = text.toLowerCase();
+
+      if (lower.includes('category')) {
+        ["Login", "Offer Letter", "Profile", "Payroll", "Other"].forEach(opt => createQuickButton(opt));
+      } else if (lower.includes('urgent')) {
+        ["Low", "Medium", "High"].forEach(opt => createQuickButton(opt));
+      }
+    }
+
+    function createQuickButton(text) {
+      const btn = document.createElement('button');
+      btn.textContent = text;
+      btn.onclick = () => {
+        quickReplies.innerHTML = '';
+        sendMessage(text);
+      };
+      quickReplies.appendChild(btn);
+    }
+
+    async function sendMessage(message) {
+      addMessage(message, 'user');
+      sessionData.chat_log.push({ role: 'user', content: message });
+
+      const step = sessionData.step;
+      if (step === 0) {
+        sessionData.email = message;
+        sessionData.step++;
+        showBotResponse("What category is your issue related to? (Login, Offer Letter, Profile, Payroll, Other)");
+        return;
+      }
+      if (step === 1) {
+        sessionData.category = message;
+        sessionData.step++;
+        showBotResponse("Please describe the issue in detail.");
+        return;
+      }
+      if (step === 2) {
+        sessionData.description = message;
+        sessionData.step++;
+        showBotResponse("How urgent is the issue? (Low, Medium, High)");
+        return;
+      }
+      if (step === 3) {
+        sessionData.urgency = message;
+        sessionData.step++;  // Increment step here so we don't override urgency later.
+        await streamFromLLM();
+        return;
+      }
+      // Step 4 and beyond: LLM follow-up phase
+      if (step >= 4) {
+        sessionData.chat_log.push({ role: 'user', content: message });
+        userInput.disabled = true;
+        await streamFromLLM();
+      }
+    }
+
+    async function streamFromLLM() {
+      showTypingIndicator();
+
+      try {
+        const res = await fetch('http://localhost:8000/chat-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            category: sessionData.category,
+            description: sessionData.description,
+            chat_log: sessionData.chat_log
+          })
+        });
+
+        hideTypingIndicator();
+
+        const botMsg = document.createElement('div');
+        botMsg.className = 'message bot';
+        chatBox.appendChild(botMsg);
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let botText = '';
+
+        // Collect full response
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          botText += chunk;
+        }
+
+        // Animate typing
+        for (let i = 0; i < botText.length; i++) {
+          await new Promise(resolve => setTimeout(resolve, 15));
+          botMsg.textContent += botText[i];
+          chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        sessionData.chat_log.push({ role: 'assistant', content: botText });
+        userInput.disabled = false;
+        userInput.focus();
+
+        // If an end-of-session marker is detected, finalize the backend session
+        if (botText.includes("__SESSION_DONE__") || botText.includes("__CREATE_TICKET__")) {
+          // Remove the marker for display purposes
+          botMsg.textContent = botText.replace("__SESSION_DONE__", "").trim();
+          addMessage("✅ This session has ended. You can start a new one anytime!", 'bot');
+          // Disable user input, but DO NOT clear the chat log
+          userInput.disabled = true;
+          // Finalize the session in the backend, but leave the UI intact
+          console.log("📦 Finalizing session:", sessionData.session_id);
+          await fetch('http://localhost:8000/finalize-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_id: sessionData.session_id,
+              email: sessionData.email,
+              category: sessionData.category,
+              description: sessionData.description,
+              urgency: sessionData.urgency,
+              chat_log: sessionData.chat_log,
+              create_ticket: false  // or true if needed
+            })
+          });
+        }
+      } catch (err) {
+        hideTypingIndicator();
+        addMessage("⚠️ Sorry, something went wrong. Please try again later.", 'bot');
+        userInput.disabled = false;
+      }
+    }
+
+    function showBotResponse(text, delay = 800) {
+      showTypingIndicator();
+      showQuickRepliesIfRelevant(text);
+      setTimeout(() => {
+        hideTypingIndicator();
+        addMessage(text, 'bot');
+        userInput.disabled = false;
+        userInput.focus();
+      }, delay);
+    }
+
+    chatForm.onsubmit = e => {
+      e.preventDefault();
+      if (userInput.value.trim()) {
+        sendMessage(userInput.value.trim());
+        userInput.value = '';
+        userInput.disabled = true;
+      }
+    };
+
+    restartBtn.onclick = () => {
+      // Clear the UI and reinitialize the session only if user clicks restart
+      chatBox.innerHTML = '';
+      quickReplies.innerHTML = '';
+      userInput.disabled = false;
+      sessionData = {
+        step: 0,
+        chat_log: [],
+        email: '',
+        category: '',
+        description: '',
+        urgency: ''
+      };
+      initializeSession();
+      setTimeout(() => {
+        showBotResponse("👋 Hi there! I’m your HireHive support bot. Let’s get started!\n\nWhat is your email address?");
+      }, 500);
+    };
+
+    window.onload = () => {
+        if (!sessionData.session_id) {
+      initializeSession();
+    }
+      setTimeout(() => {
+        showBotResponse("👋 Hi there! I’m your HireHive support bot. Let’s get started!\n\nWhat is your email address?");
+      }, 500);
+    };
+
+    // TTS: Speak the bot message
+    function speakText(text) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      speechSynthesis.speak(utterance);
+    }
+
+    // Voice input: speech-to-text
+    const voiceBtn = document.getElementById('voiceBtn');
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+
+      voiceBtn.onclick = () => {
+        recognition.start();
+      };
+
+      recognition.onresult = event => {
+        const transcript = event.results[0][0].transcript;
+        userInput.value = transcript;
+        sendMessage(transcript);
+      };
+
+      recognition.onerror = event => {
+        alert("Voice input error: " + event.error);
+      };
+    } else {
+      voiceBtn.disabled = true;
+      voiceBtn.textContent = "🎙️ Not supported";
+    }
+  </script>
+</body>
+</html>

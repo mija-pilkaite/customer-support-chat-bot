@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>HireHive Admin Panel</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 2rem;
+      background: #f9f9f9;
+    }
+    h1, h2 {
+      margin-top: 2rem;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-bottom: 2rem;
+      background: white;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: left;
+    }
+    th {
+      background-color: #e0f0ff;
+    }
+    tr:nth-child(even) {
+      background-color: #f2f2f2;
+    }
+    .container {
+      max-width: 1000px;
+      margin: auto;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>📊 HireHive Admin Panel</h1>
+
+  <h2>📝 Support Tickets</h2>
+  <table id="ticketsTable">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Status</th>
+        <th>Summary</th>
+        <th>Session ID</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <h2>💬 Chat Sessions</h2>
+  <table id="sessionsTable">
+    <thead>
+      <tr>
+        <th>Session ID</th>
+        <th>Email</th>
+        <th>Category</th>
+        <th>Description</th>
+        <th>Urgency</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script>
+  async function fetchTickets() {
+    const res = await fetch('http://localhost:8000/tickets');
+    const tickets = await res.json();
+    const tbody = document.querySelector('#ticketsTable tbody');
+    tickets.forEach(t => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${t.id}</td>
+        <td>${t.status}</td>
+        <td>${t.issue_summary}</td>
+        <td>${t.linked_session_id || '-'}</td>
+        <td>${new Date(t.created_at).toLocaleString()}</td>
+      `;
+      tbody.appendChild(row);
+    });
+  }
+
+  async function fetchSessions() {
+    const res = await fetch('http://localhost:8000/conversations');
+    const sessions = await res.json();
+    const tbody = document.querySelector('#sessionsTable tbody');
+    sessions.forEach(s => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${s.session_id}</td>
+        <td>${s.email}</td>
+        <td>${s.category}</td>
+        <td>${s.description}</td>
+        <td>${s.urgency}</td>
+        <td>${new Date(s.created_at).toLocaleString()}</td>
+      `;
+      tbody.appendChild(row);
+    });
+  }
+
+  fetchTickets();
+  fetchSessions();
+</script>
+</body>
+</html>

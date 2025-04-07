@@ -1,0 +1,16 @@
+.env
+chat_sessions.db
+venv
+data/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite
+*.log
+*.egg-info/
+*.egg
+*.whl
+*.zip
+*.tar.gz
