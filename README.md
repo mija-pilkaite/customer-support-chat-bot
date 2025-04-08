@@ -56,7 +56,7 @@ uvicorn backend.main:app --reload
 
 
 ## Project Structure:
-
+```text
 ├── backend/
 │   ├── main.py             # FastAPI app
 │   ├── logic.py            # Main chat flow logic
@@ -72,6 +72,7 @@ uvicorn backend.main:app --reload
 │   └── index.html          # Chat UI (with voice, streaming, buttons)
 ├── requirements.txt
 └── README.md
+```
 
 ### 🧠 TODO Ideas
 
@@ -81,7 +82,7 @@ uvicorn backend.main:app --reload
 	•	Enable the admin to upload PDF documents to better customize the responses (RAG)
     •	Better UI experience
 	•	Enable more actions from the bots side besides the ticket creation
-    
+
 
     
 
