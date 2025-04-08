@@ -214,77 +214,100 @@
     }
 
     async function streamFromLLM() {
-      showTypingIndicator();
+  showTypingIndicator();
 
-      try {
-        const res = await fetch('http://localhost:8000/chat-stream', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            category: sessionData.category,
-            description: sessionData.description,
-            chat_log: sessionData.chat_log
-          })
-        });
+  try {
+    const res = await fetch('http://localhost:8000/chat-stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        category: sessionData.category,
+        description: sessionData.description,
+        chat_log: sessionData.chat_log
+      })
+    });
 
-        hideTypingIndicator();
-
-        const botMsg = document.createElement('div');
-        botMsg.className = 'message bot';
-        chatBox.appendChild(botMsg);
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        let botText = '';
-
-        // Collect full response
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value);
-          botText += chunk;
-        }
-
-        // Animate typing
-        for (let i = 0; i < botText.length; i++) {
-          await new Promise(resolve => setTimeout(resolve, 15));
-          botMsg.textContent += botText[i];
-          chatBox.scrollTop = chatBox.scrollHeight;
-        }
-
-        sessionData.chat_log.push({ role: 'assistant', content: botText });
-        userInput.disabled = false;
-        userInput.focus();
-
-        // If an end-of-session marker is detected, finalize the backend session
-        if (botText.includes("__SESSION_DONE__") || botText.includes("__CREATE_TICKET__")) {
-          // Remove the marker for display purposes
-          botMsg.textContent = botText.replace("__SESSION_DONE__", "").trim();
-          addMessage("✅ This session has ended. You can start a new one anytime!", 'bot');
-          // Disable user input, but DO NOT clear the chat log
-          userInput.disabled = true;
-          // Finalize the session in the backend, but leave the UI intact
-          console.log("📦 Finalizing session:", sessionData.session_id);
-          await fetch('http://localhost:8000/finalize-session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              session_id: sessionData.session_id,
-              email: sessionData.email,
-              category: sessionData.category,
-              description: sessionData.description,
-              urgency: sessionData.urgency,
-              chat_log: sessionData.chat_log,
-              create_ticket: false  // or true if needed
-            })
-          });
-        }
-      } catch (err) {
-        hideTypingIndicator();
-        addMessage("⚠️ Sorry, something went wrong. Please try again later.", 'bot');
-        userInput.disabled = false;
-      }
+    // Check if response is OK; if not, throw an error to trigger the catch block.
+    if (!res.ok) {
+      throw new Error(`HTTP error! status: ${res.status}`);
     }
+
+    hideTypingIndicator();
+
+    const botMsg = document.createElement('div');
+    botMsg.className = 'message bot';
+    chatBox.appendChild(botMsg);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let botText = '';
+
+    // Collect full response from LLM
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      botText += chunk;
+    }
+
+    // Animate typing for display; meanwhile, retain raw botText (with markers) for backend logic.
+    const displayText = botText.replace(/__SESSION_DONE__/g, "").replace(/__CREATE_TICKET__/g, "").trim();
+
+    for (let i = 0; i < displayText.length; i++) {
+      await new Promise(resolve => setTimeout(resolve, 15));
+      botMsg.textContent += displayText[i];
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    // Save the raw response (with markers) for backend finalize logic.
+    sessionData.chat_log.push({ role: 'assistant', content: botText });
+    userInput.disabled = false;
+    userInput.focus();
+
+    // Finalize session if appropriate markers are present.
+    if (botText.includes("__SESSION_DONE__") || botText.includes("__CREATE_TICKET__")) {
+      // Remove the markers from the displayed message.
+      botMsg.textContent = botText.replace(/__SESSION_DONE__/g, "").replace(/__CREATE_TICKET__/g, "").trim();
+      addMessage("✅ This session has ended. You can start a new one anytime!", 'bot');
+      userInput.disabled = true;
+      console.log("📦 Finalizing session:", sessionData.session_id);
+      await fetch('http://localhost:8000/finalize-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionData.session_id,
+          email: sessionData.email,
+          category: sessionData.category,
+          description: sessionData.description,
+          urgency: sessionData.urgency,
+          chat_log: sessionData.chat_log,
+          create_ticket: botText.includes("__CREATE_TICKET__")
+        })
+      });
+    }
+  } catch (err) {
+    hideTypingIndicator();
+    // Custom error message for the user.
+    const errorMsg = "I am very sorry, seems like I am not functioning well today. Can you try again later? In the meantime, I forwarded your issue to our support team and they will get in touch shortly!";
+    addMessage(errorMsg, 'bot');
+    userInput.disabled = true;
+    console.log("📦 Finalizing session due to error:", sessionData.session_id);
+    // Finalize the session with create_ticket: true
+    await fetch('http://localhost:8000/finalize-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionData.session_id,
+        email: sessionData.email,
+        category: sessionData.category,
+        description: sessionData.description,
+        urgency: sessionData.urgency,
+        chat_log: sessionData.chat_log,
+        create_ticket: true
+      })
+    });
+  }
+}
 
     function showBotResponse(text, delay = 800) {
       showTypingIndicator();

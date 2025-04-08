@@ -37,7 +37,8 @@ Guidelines:
 - Do not end the session on a question.
 - If the user explicitly asks to create a support ticket, include: __CREATE_TICKET__.
 - Only include __SESSION_DONE__ if the user clearly says the issue is resolved or they respond with something like "no", "that's all", "thanks, I'm done", etc.
-Do not end the session after asking a follow-up question such as "Is there anything else I can help with?" — wait for the user’s response first.
+Do not end the session after asking a follow-up question such as "Is there anything else I can help with?" — wait for the user’s response first. 
+DO NOT SEND the __END_SESSION__ marker if you have asked the question and NEVER repeat a question you have already asked.
 """
     try:
         # Start streaming
